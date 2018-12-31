@@ -5,3 +5,4 @@ authors = ["niall"]
 edition = "2018"
 
 [dependencies]
+capnp= "*"
