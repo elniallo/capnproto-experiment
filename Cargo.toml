@@ -1,8 +1,11 @@
 [package]
 name = "capnproto-experiment"
 version = "0.1.0"
-authors = ["niall"]
+authors = ["Niall Moore <niall@hycon.io>"]
 edition = "2018"
+build = "build.rs"
 
+[build-dependencies]
+capnpc = {git= "https://github.com/elniallo/capnproto-rust"}
 [dependencies]
 capnp= "*"
