@@ -4,7 +4,8 @@ fn main() {
      capnpc::CompilerCommand::new()
         .file("src/schema/test_schema.capnp")
         .src_prefix("src/schema")
-        .output_path("src/schema_out")
+        .edition(capnpc::RustEdition::Rust2018)
+        .output_path("src/schema")
         .run()
         .expect("compiling schema");
 }
