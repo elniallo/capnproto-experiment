@@ -9,3 +9,4 @@ build = "build.rs"
 capnpc = {git= "https://github.com/elniallo/capnproto-rust"}
 [dependencies]
 capnp= "*"
+capnp-rpc="*"
