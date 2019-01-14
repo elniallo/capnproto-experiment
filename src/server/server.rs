@@ -14,13 +14,12 @@ use tokio::runtime::current_thread;
 use tokio_core::reactor;
 use tokio_io::AsyncRead;
 #[derive(Clone)]
-pub struct StatusImpl<'a> {
+pub struct StatusImpl {
     version: i32,
     guid: String,
     public_port: i32,
     network_id: String,
     port: i32,
-    reader: network::status::Reader<'a>,
 }
 
 struct NetworkClient {
@@ -49,28 +48,14 @@ impl NetworkMap {
     }
 }
 
-impl<'a> StatusImpl<'a> {
-    fn new(
-        version: i32,
-        public_port: i32,
-        network_id: String,
-        port: i32,
-        mut builder: capnp::message::Builder<capnp::message::HeapAllocator>,
-    ) -> StatusImpl<'a> {
-        let mut status = builder.init_root::<'a, network::status::Builder<'a>>();
-        status.set_guid(&StatusImpl::generate_guid());
-        status.set_version(version);
-        status.set_networkid(&network_id);
-        status.set_port(port);
-        status.set_public_port(public_port);
-        let status_reader = status.reborrow_as_reader().to_owned();
+impl StatusImpl {
+    fn new(version: i32, public_port: i32, network_id: String, port: i32) -> StatusImpl {
         StatusImpl {
             version,
             public_port,
             network_id,
             port,
             guid: StatusImpl::generate_guid(),
-            reader: status_reader,
         }
     }
 
@@ -80,39 +65,36 @@ impl<'a> StatusImpl<'a> {
 }
 
 #[derive(Clone)]
-pub struct RPCServer<'a, 'b> {
-    status: StatusImpl<'a, 'b>,
+pub struct RPCServer {
+    status: StatusImpl,
 }
 
-impl<'a, 'b> RPCServer<'a, 'b> {
-    fn new(
-        mut builder: capnp::message::Builder<capnp::message::HeapAllocator>,
-    ) -> RPCServer<'a, 'b> {
+impl RPCServer {
+    fn new() -> RPCServer {
         RPCServer {
-            status: StatusImpl::new(11, 8148, String::from("hycon"), 8148, builder),
+            status: StatusImpl::new(11, 8148, String::from("hycon"), 8148),
         }
     }
 }
 
-impl<'a, 'b> crate::test_schema_capnp::network::Server for RPCServer<'a, 'b> {
+impl crate::test_schema_capnp::network::Server for RPCServer {
     fn get_status(
         &mut self,
         _params: network::GetStatusParams,
         mut results: network::GetStatusResults,
     ) -> Promise<(), ::capnp::Error> {
         println!("Received Status Call");
-        let mut builder = Builder::new_default();
-        let mut status = builder.init_root::<network::status::Builder>();
+        let mut status = results.get().get_status().unwrap();
         status.set_guid(&self.status.guid);
         status.set_version(self.status.version);
         status.set_networkid(&self.status.network_id);
         status.set_port(self.status.port);
         status.set_public_port(self.status.public_port);
-        let status_reader = status.reborrow_as_reader().to_owned();
+        let status_reader = status.into_reader().to_owned().clone();
+        {
+            println!("Bull");
+        }
         results.get().set_status(status_reader);
-        // results
-        //     .get()
-
         Promise::ok(())
     }
 }
@@ -120,7 +102,9 @@ impl<'a, 'b> crate::test_schema_capnp::network::Server for RPCServer<'a, 'b> {
 pub fn main() {
     use std::net::ToSocketAddrs;
     let args: Vec<String> = ::std::env::args().collect();
+    let mut status_reader: network::status::Reader;
     let mut builder = Builder::new_default();
+    let mut server: RPCServer;
     if args.len() != 3 {
         println!("usage: {} server HOST:PORT", args[0]);
         return;
@@ -134,7 +118,7 @@ pub fn main() {
         .next()
         .expect("could not parse address");
     let socket = ::tokio_core::net::TcpListener::bind(&addr, &handle).unwrap();
-    let server = RPCServer::new(builder);
+    server = RPCServer::new();
     {
         let connection = network::ToClient::new(server).into_client::<capnp_rpc::Server>();
         let handle1 = handle.clone();
@@ -167,7 +151,7 @@ pub mod tests {
     #[test]
     fn it_should_do_stuff() {
         let mut builder = Builder::new_default();
-        let server = RPCServer::new(builder);
+        let server = RPCServer::new();
         assert_eq!(
             server.status.guid,
             String::from("afhwjgbfdjobnqfjdfqojgadnv")
