@@ -13,13 +13,13 @@ use std::rc::Rc;
 use tokio::runtime::current_thread;
 use tokio_core::reactor;
 use tokio_io::AsyncRead;
-#[derive(Clone)]
 pub struct StatusImpl {
     version: i32,
     guid: String,
     public_port: i32,
     network_id: String,
     port: i32,
+    builder: ::capnp_rpc::ImbuedMessageBuilder<::capnp::message::HeapAllocator>,
 }
 
 struct NetworkClient {
@@ -56,6 +56,7 @@ impl StatusImpl {
             network_id,
             port,
             guid: StatusImpl::generate_guid(),
+            builder: ::capnp_rpc::ImbuedMessageBuilder::new(::capnp::message::HeapAllocator::new()),
         }
     }
 
@@ -64,7 +65,6 @@ impl StatusImpl {
     }
 }
 
-#[derive(Clone)]
 pub struct RPCServer {
     status: StatusImpl,
 }
@@ -84,16 +84,17 @@ impl crate::test_schema_capnp::network::Server for RPCServer {
         mut results: network::GetStatusResults,
     ) -> Promise<(), ::capnp::Error> {
         println!("Received Status Call");
-        let mut status = results.get().get_status().unwrap();
-        status.set_guid(&self.status.guid);
-        status.set_version(self.status.version);
-        status.set_networkid(&self.status.network_id);
-        status.set_port(self.status.port);
-        status.set_public_port(self.status.public_port);
-        let status_reader = status.into_reader().to_owned().clone();
-        {
-            println!("Bull");
-        }
+        let mut builder = self
+            .status
+            .builder
+            .get_root::<network::status::Builder>()
+            .unwrap();
+        builder.set_guid(&self.status.guid);
+        builder.set_version(self.status.version);
+        builder.set_networkid(&self.status.network_id);
+        builder.set_port(self.status.port);
+        builder.set_public_port(self.status.public_port);
+        let status_reader = builder.into_reader().to_owned();
         results.get().set_status(status_reader);
         Promise::ok(())
     }

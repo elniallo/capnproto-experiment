@@ -39,7 +39,8 @@ pub fn main() {
     let mut request = net.get_status_request();
 
     let _status = core.run(rpc_system.join(request.send().promise.and_then(|response| {
-        let status = response.get().unwrap().get_status();
+        let status = response.get().unwrap().get_status().unwrap();
+        println!("GUID: {}", status.get_guid().unwrap());
         Promise::ok(())
     })));
     println!("message sent");
