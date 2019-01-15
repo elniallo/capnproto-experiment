@@ -1,4 +1,4 @@
-use crate::test_schema_capnp::network;
+use crate::test_schema_capnp::{network, status};
 use capnp::capability::Promise;
 use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::future::Future;
@@ -22,9 +22,9 @@ pub fn main() {
     let handle = core.handle();
     let mut runtime = tokio::runtime::current_thread::Runtime::new().unwrap();
     let stream = runtime
-        .block_on(::tokio::net::TcpStream::connect(&addr))
+        .block_on(::tokio_core::net::TcpStream::connect(&addr, &handle))
         .unwrap();
-    println!("Connected to {}", &stream.local_addr().unwrap());
+    println!("Connected to {}", &addr);
     stream.set_nodelay(true).expect("Some error");
     let (reader, writer) = stream.split();
     let network_obj = Box::new(twoparty::VatNetwork::new(
@@ -35,14 +35,10 @@ pub fn main() {
     ));
     let mut rpc_system = RpcSystem::new(network_obj, None);
     let net: network::Client = rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
-
-    let mut request = net.get_status_request();
-
-    let _status = core.run(rpc_system.join(request.send().promise.and_then(|response| {
-        let status = response.get().unwrap().get_status().unwrap();
-        println!("GUID: {}", status.get_guid().unwrap());
-        Promise::ok(())
-    })));
+    let request = net.get_status_request();
+    let guid = request.send().pipeline.get_status().guid_request().send();
+    let (_res, data) = runtime.block_on(rpc_system.join(guid.promise)).unwrap();
+    println!("GUID: {}", data.get().unwrap().get_guid().unwrap());
     println!("message sent");
     println!("Exiting");
 }

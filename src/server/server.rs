@@ -13,13 +13,13 @@ use std::rc::Rc;
 use tokio::runtime::current_thread;
 use tokio_core::reactor;
 use tokio_io::AsyncRead;
+#[derive(Clone)]
 pub struct StatusImpl {
     version: i32,
     guid: String,
     public_port: i32,
     network_id: String,
     port: i32,
-    builder: ::capnp_rpc::ImbuedMessageBuilder<::capnp::message::HeapAllocator>,
 }
 
 struct NetworkClient {
@@ -56,12 +56,22 @@ impl StatusImpl {
             network_id,
             port,
             guid: StatusImpl::generate_guid(),
-            builder: ::capnp_rpc::ImbuedMessageBuilder::new(::capnp::message::HeapAllocator::new()),
         }
     }
 
     fn generate_guid() -> String {
         String::from("afhwjgbfdjobnqfjdfqojgadnv")
+    }
+}
+
+impl crate::test_schema_capnp::status::Server for StatusImpl {
+    fn guid(
+        &mut self,
+        _params: crate::test_schema_capnp::status::GuidParams,
+        mut results: crate::test_schema_capnp::status::GuidResults,
+    ) -> Promise<(), ::capnp::Error> {
+        results.get().set_guid(&self.guid);
+        Promise::ok(())
     }
 }
 
@@ -83,19 +93,23 @@ impl crate::test_schema_capnp::network::Server for RPCServer {
         _params: network::GetStatusParams,
         mut results: network::GetStatusResults,
     ) -> Promise<(), ::capnp::Error> {
+        results.get().set_status(
+            crate::test_schema_capnp::status::ToClient::new(self.status.clone())
+                .into_client::<::capnp_rpc::Server>(),
+        );
         println!("Received Status Call");
-        let mut builder = self
-            .status
-            .builder
-            .get_root::<network::status::Builder>()
-            .unwrap();
-        builder.set_guid(&self.status.guid);
-        builder.set_version(self.status.version);
-        builder.set_networkid(&self.status.network_id);
-        builder.set_port(self.status.port);
-        builder.set_public_port(self.status.public_port);
-        let status_reader = builder.into_reader().to_owned();
-        results.get().set_status(status_reader);
+        // let mut builder = self
+        //     .status
+        //     .builder
+        //     .get_root::<network::status::Builder>()
+        //     .unwrap();
+        // builder.set_guid(&self.status.guid);
+        // builder.set_version(self.status.version);
+        // builder.set_networkid(&self.status.network_id);
+        // builder.set_port(self.status.port);
+        // builder.set_public_port(self.status.public_port);
+        // let status_reader = builder.into_reader();
+        // results.get().set_status(status_reader);
         Promise::ok(())
     }
 }
@@ -103,8 +117,6 @@ impl crate::test_schema_capnp::network::Server for RPCServer {
 pub fn main() {
     use std::net::ToSocketAddrs;
     let args: Vec<String> = ::std::env::args().collect();
-    let mut status_reader: network::status::Reader;
-    let mut builder = Builder::new_default();
     let mut server: RPCServer;
     if args.len() != 3 {
         println!("usage: {} server HOST:PORT", args[0]);
@@ -137,7 +149,7 @@ pub fn main() {
             );
             let conn = connection.clone().client;
             let rpc_system = RpcSystem::new(Box::new(net), Some(conn));
-            handle.spawn(rpc_system.map_err(|_| ()));
+            handle.spawn(rpc_system.map_err(|e| println!("Error {}", e)));
             Ok(())
         });
 
